@@ -1,0 +1,116 @@
+import dash
+from dash import dcc, html, Input, Output
+import dash_bootstrap_components as dbc
+import pandas as pd
+from io import BytesIO
+import base64
+
+# Sample data for customer transactions
+data = {
+    "Date": ["2023-01-01", "2023-01-15", "2023-02-01", "2023-02-15"],
+    "Description": ["Transfer to +252700001", "Deposit", "Utility Bill", "Transfer from +252700002"],
+    "Amount": [150, 500, -200, 300],
+    "Balance": [850, 1350, 1150, 1450]
+}
+df = pd.DataFrame(data)
+
+# Initialize the Dash app
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+
+# Layout for the dashboard
+app.layout = dbc.Container(
+    [
+        html.H1("Customer Dashboard", style={"text-align": "center", "margin-top": "20px"}),
+
+        # Date filter
+        dbc.Row(
+            [
+                dbc.Col(html.Label("Start Date")),
+                dbc.Col(html.Label("End Date")),
+            ],
+            className="mb-2"
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    dcc.DatePickerSingle(
+                        id="start-date",
+                        date=min(pd.to_datetime(df["Date"])),
+                        className="mb-2"
+                    ),
+                    width=6,
+                ),
+                dbc.Col(
+                    dcc.DatePickerSingle(
+                        id="end-date",
+                        date=max(pd.to_datetime(df["Date"])),
+                        className="mb-2"
+                    ),
+                    width=6,
+                ),
+            ]
+        ),
+
+        # Table
+        dbc.Row(
+            dbc.Col(
+                html.Div(id="transaction-table", style={"margin-top": "20px"}),
+                width=12
+            )
+        ),
+
+        # Download button
+        dbc.Row(
+            dbc.Col(
+                dbc.Button("Download Statement", id="download-btn", color="primary", style={"margin-top": "20px"}),
+                width=12
+            ),
+            className="mb-4"
+        ),
+
+        # Hidden link to download Excel
+        dcc.Download(id="download-file"),
+    ],
+    fluid=True
+)
+
+# Callback to filter data by date range and update the transaction table
+@app.callback(
+    Output("transaction-table", "children"),
+    Input("start-date", "date"),
+    Input("end-date", "date")
+)
+def update_table(start_date, end_date):
+    filtered_df = df[(pd.to_datetime(df["Date"]) >= pd.to_datetime(start_date)) &
+                     (pd.to_datetime(df["Date"]) <= pd.to_datetime(end_date))]
+
+    return dbc.Table.from_dataframe(
+        filtered_df,
+        striped=True,
+        bordered=True,
+        hover=True,
+        className="mt-4"
+    )
+
+# Callback to generate the Excel file and download it
+@app.callback(
+    Output("download-file", "data"),
+    Input("download-btn", "n_clicks"),
+    prevent_initial_call=True
+)
+def download_statement(n_clicks):
+    # Save the statement to an Excel file
+    output = BytesIO()
+    df.to_excel(output, index=False, engine="openpyxl")
+    output.seek(0)
+
+    # Encode file as base64 for downloading
+    excel_data = base64.b64encode(output.read()).decode("utf-8")
+    return dcc.send_file(
+        filename="statement.xlsx",
+        content=base64.b64decode(excel_data)
+    )
+
+# Run the app
+if __name__ == "__main__":
+    app.run_server(debug=True, port=8051)
